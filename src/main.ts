@@ -1,6 +1,7 @@
 import { HandTracker } from './input/HandTracker.ts';
 import type { HandFrame } from './input/HandTracker.ts';
 import {
+  CAMERA_FPS,
   CAMERA_HEIGHT,
   CAMERA_WIDTH,
   MAX_HANDS,
@@ -48,7 +49,8 @@ const tracker = new HandTracker(video, {
   numHands: MAX_HANDS,
   mirror: MIRROR_CAMERA,
   width: CAMERA_WIDTH,
-  height: CAMERA_HEIGHT
+  height: CAMERA_HEIGHT,
+  frameRate: CAMERA_FPS
 });
 
 let smoothedFps = 0;
@@ -59,9 +61,22 @@ function drawFrame(frame: HandFrame): void {
   const h = canvas.height;
   ctx.clearRect(0, 0, w, h);
 
+  let predictedCount = 0;
+  let maxGap = 0;
+
+  ctx.lineCap = 'round';
+  ctx.lineJoin = 'round';
   for (const hand of frame.hands) {
-    ctx.lineCap = 'round';
-    ctx.lineJoin = 'round';
+    if (hand.predicted) {
+      predictedCount++;
+      if (hand.gapFrames > maxGap) maxGap = hand.gapFrames;
+      ctx.setLineDash([8, 5]);
+      ctx.globalAlpha = 0.5;
+    } else {
+      ctx.setLineDash([]);
+      ctx.globalAlpha = 1;
+    }
+
     for (let f = 0; f < FINGER_CHAINS.length; f++) {
       const chain = FINGER_CHAINS[f];
       ctx.strokeStyle = FINGER_COLORS[f];
@@ -77,7 +92,8 @@ function drawFrame(frame: HandFrame): void {
       ctx.stroke();
     }
 
-    ctx.fillStyle = '#ffffff';
+    ctx.setLineDash([]);
+    ctx.fillStyle = hand.predicted ? '#ffd6d6' : '#ffffff';
     ctx.strokeStyle = '#222';
     ctx.lineWidth = 1.5;
     for (const lm of hand.landmarks) {
@@ -88,14 +104,23 @@ function drawFrame(frame: HandFrame): void {
       ctx.fill();
       ctx.stroke();
     }
+
+    const wrist = hand.landmarks[0];
+    ctx.globalAlpha = 1;
+    ctx.fillStyle = hand.predicted ? '#ff4d4d' : '#222';
+    ctx.font = '12px ui-monospace, monospace';
+    ctx.fillText(`#${hand.id}${hand.predicted ? ` pred(${hand.gapFrames})` : ''}`, wrist.x * w + 8, wrist.y * h - 8);
   }
 
+  ctx.setLineDash([]);
+  ctx.globalAlpha = 1;
   ctx.fillStyle = 'rgba(0, 0, 0, 0.65)';
-  ctx.fillRect(12, 12, 180, 56);
+  ctx.fillRect(12, 12, 220, 76);
   ctx.fillStyle = '#fff';
   ctx.font = '14px ui-monospace, monospace';
   ctx.fillText(`FPS:   ${smoothedFps.toFixed(1)}`, 24, 36);
   ctx.fillText(`Hands: ${frame.hands.length}`, 24, 56);
+  ctx.fillText(`Pred:  ${predictedCount} (gap=${maxGap})`, 24, 76);
 }
 
 function loop(): void {
